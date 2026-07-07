@@ -9,6 +9,10 @@ runnable, version-controlled code.
 > you can clone, run, extend with your own entities and sources, and adapt into the real pipeline.
 > The "Make it yours" section below shows where to take it.
 
+> **▶️ New here? Open [`notebooks/00_start_here.py`](notebooks/00_start_here.py)** — the guided,
+> runnable front door: the business use case, what each table means, and a step-by-step run-through
+> (generate data → run the pipeline → explore each layer → read the dashboard).
+
 It's a "teach to fish" starting point that demonstrates the SDP capabilities most relevant to
 FinClear:
 
