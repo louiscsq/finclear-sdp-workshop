@@ -2,17 +2,16 @@
 # MAGIC %md
 # MAGIC # FinClear — "Fake Artie" data generator + CDC simulator
 # MAGIC
-# MAGIC Simulates the FinClear **Summit** capital-markets source, the way **Artie** delivers it to
-# MAGIC the lakehouse: an **append-only change feed** (insert / update / delete events, each with a
-# MAGIC monotonic `_commit_version`) landed as Parquet files in a Unity Catalog **Volume**.
+# MAGIC Simulates the FinClear **Summit** capital-markets source, the way **Artie** delivers it.
+# MAGIC Two sinks (widget `sink`):
 # MAGIC
-# MAGIC The SDP pipeline reads these files with Auto Loader (bronze), then `APPLY CHANGES` /
-# MAGIC materialized views collapse them to current-state silver.
+# MAGIC - **`cdf`** *(default)* — Artie **merges changes in place** into current-state `src_<entity>`
+# MAGIC   Delta tables with Change Data Feed enabled. Bronze reads their CDF. This matches FinClear's
+# MAGIC   likely Artie setup ("raw source copy, one object per source table" + "CDC merge into Delta").
+# MAGIC - **`files`** *(fallback)* — Artie emits an **append-only change feed** as Parquet files in a
+# MAGIC   Volume; bronze reads them with Auto Loader.
 # MAGIC
-# MAGIC > **Production note.** In change-feed / history mode, Artie emits exactly this kind of
-# MAGIC > append-only stream. If Artie instead **merges in place** into a Delta table, enable
-# MAGIC > Change Data Feed on that table and read `table_changes()` — it yields the identical
-# MAGIC > `_change_type` / `_commit_version` feed, and everything downstream is unchanged.
+# MAGIC Both yield the identical `_change_type` / `_commit_version` change stream downstream.
 # MAGIC
 # MAGIC **`mode`**: `init` (initial load only) · `cycle` (one CDC cycle) · `both` (default).
 # MAGIC Run `init` once, then `cycle` repeatedly (re-run the SDP pipeline between cycles to see
@@ -23,8 +22,8 @@
 
 dbutils.widgets.dropdown("mode", "both", ["init", "cycle", "both"], "Run mode")
 dbutils.widgets.dropdown("sink", "cdf", ["cdf", "files"], "Artie sink")
-dbutils.widgets.text("catalog", "finclear_demo", "Target catalog")
-dbutils.widgets.text("schema", "sdp_demo", "Target schema")
+dbutils.widgets.text("catalog", "finclear_sdp_demo_catalog", "Target catalog")
+dbutils.widgets.text("schema", "sdp_workshop", "Target schema")
 dbutils.widgets.text("src_schema", "", "Schema for Artie src tables (cdf mode; blank=schema)")
 dbutils.widgets.text("volume", "artie_cdc", "Landing volume (files mode)")
 # Light defaults — dial up for a bigger cost gap, down for a faster live run.
@@ -235,9 +234,12 @@ def initial_load():
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## CDC cycle
-# MAGIC Per entity: ~`update_pct` updates (mutated attributes, new commit_version),
-# MAGIC ~`delete_pct` deletes, plus a handful of **duplicate** and **out-of-order** events so you
-# MAGIC can see `APPLY CHANGES … SEQUENCE BY` dedup/order them automatically.
+# MAGIC Per entity: ~`update_pct` updates (mutated attributes), ~`delete_pct` deletes, plus a few
+# MAGIC **duplicate** / **out-of-order** events.
+# MAGIC - In `files` mode these flow through raw, so `APPLY CHANGES … SEQUENCE BY` dedups/orders them.
+# MAGIC - In `cdf` mode the MERGE below (i.e. Artie) already collapses them per key before the feed —
+# MAGIC   which is exactly why merge-in-place output is clean; APPLY CHANGES still handles ordering,
+# MAGIC   deletes, and SCD2 history.
 
 # COMMAND ----------
 

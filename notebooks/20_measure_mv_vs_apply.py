@@ -18,7 +18,7 @@
 
 dbutils.widgets.text("pipeline_id", "", "SDP pipeline ID")
 dbutils.widgets.text("catalog", "finclear_sdp_demo_catalog", "Catalog")
-dbutils.widgets.text("schema", "sdp_demo", "Schema")
+dbutils.widgets.text("schema", "sdp_workshop", "Schema")
 
 PIPELINE_ID = dbutils.widgets.get("pipeline_id")
 C = f"{dbutils.widgets.get('catalog')}.{dbutils.widgets.get('schema')}"

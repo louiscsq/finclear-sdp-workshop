@@ -61,6 +61,7 @@ def _make_bronze(entity: str, key: str):
                 .option("cloudFiles.format", "parquet")
                 .option("cloudFiles.schemaLocation", f"{SRC_VOLUME}/_schema/{entity}")
                 .load(f"{SRC_VOLUME}/{entity}/")
+                .drop("_rescued_data")  # keep silver's COLUMNS * EXCEPT list consistent with cdf mode
                 .withColumn("_source_file", F.col("_metadata.file_path"))
             )
         return df.withColumn("_ingested_at", F.current_timestamp())
