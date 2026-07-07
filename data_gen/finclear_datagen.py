@@ -14,13 +14,14 @@
 # MAGIC > Change Data Feed on that table and read `table_changes()` — it yields the identical
 # MAGIC > `_change_type` / `_commit_version` feed, and everything downstream is unchanged.
 # MAGIC
-# MAGIC Run the **initial load** once, then run the **CDC cycle** cell as many times as you like
-# MAGIC (each run emits ~18% updates + a few deletes + some duplicate / out-of-order events, the
-# MAGIC realistic churn FinClear quoted). Re-run the SDP pipeline between cycles to see incremental
-# MAGIC processing.
+# MAGIC **`mode`**: `init` (initial load only) · `cycle` (one CDC cycle) · `both` (default).
+# MAGIC Run `init` once, then `cycle` repeatedly (re-run the SDP pipeline between cycles to see
+# MAGIC incremental processing). Each cycle emits ~18% updates + a few deletes + duplicate /
+# MAGIC out-of-order events — the churn FinClear quoted.
 
 # COMMAND ----------
 
+dbutils.widgets.dropdown("mode", "both", ["init", "cycle", "both"], "Run mode")
 dbutils.widgets.text("catalog", "finclear_demo", "Target catalog")
 dbutils.widgets.text("schema", "sdp_demo", "Target schema")
 dbutils.widgets.text("volume", "artie_cdc", "Landing volume (change files)")
@@ -33,30 +34,34 @@ dbutils.widgets.text("n_contract_notes", "50000", "Contract notes")
 dbutils.widgets.text("update_pct", "0.18", "Update rate per cycle")
 dbutils.widgets.text("delete_pct", "0.01", "Delete rate per cycle")
 
+MODE = dbutils.widgets.get("mode")
 CATALOG = dbutils.widgets.get("catalog")
 SCHEMA = dbutils.widgets.get("schema")
 VOLUME = dbutils.widgets.get("volume")
 VOL_PATH = f"/Volumes/{CATALOG}/{SCHEMA}/{VOLUME}"
+UPDATE_PCT = float(dbutils.widgets.get("update_pct"))
+DELETE_PCT = float(dbutils.widgets.get("delete_pct"))
 
 from pyspark.sql import functions as F, Window
 
 # Catalog is assumed to already exist (managed catalogs often can't be created ad hoc).
-# Point the `catalog` param at an existing catalog you can write to.
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA}")
 spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG}.{SCHEMA}.{VOLUME}")
 
-# A tiny control table tracks the current entities (so cycles can pick real keys to mutate)
-# and the global commit-version high-water mark, so sequencing is monotonic across cycles.
+# Control table: tracks the global commit-version high-water mark so sequencing is
+# monotonic across runs.
 spark.sql(f"""
   CREATE TABLE IF NOT EXISTS {CATALOG}.{SCHEMA}._sim_state
   (entity STRING, max_id BIGINT, commit_version BIGINT)
 """)
 
 ENTITIES = ["accounts", "securities", "trades", "holdings", "contract_notes"]
+KEY = {"accounts": "account_id", "securities": "security_id", "trades": "trade_id",
+       "holdings": "holding_id", "contract_notes": "contract_note_id"}
+COUNT = {e: int(dbutils.widgets.get(f"n_{e}")) for e in ENTITIES}
 
 
 def _next_commit_version(n_rows: int) -> int:
-    """Reserve a contiguous block of commit versions; returns the block start."""
     row = spark.sql(f"SELECT COALESCE(MAX(commit_version),0) AS v FROM {CATALOG}.{SCHEMA}._sim_state").first()
     start = int(row["v"]) + 1
     spark.sql(f"INSERT INTO {CATALOG}.{SCHEMA}._sim_state VALUES ('_cv', 0, {start + n_rows})")
@@ -64,8 +69,7 @@ def _next_commit_version(n_rows: int) -> int:
 
 
 def _write_changes(entity: str, df):
-    """Land a change batch as Parquet under the entity's Volume folder."""
-    (df.write.mode("append").parquet(f"{VOL_PATH}/{entity}/"))
+    df.write.mode("append").parquet(f"{VOL_PATH}/{entity}/")
 
 
 # COMMAND ----------
@@ -142,12 +146,12 @@ def build_holdings(id_df, n_acct, n_sec):
                 "market_value", "cost_base", "unrealised_pnl", "as_at_date"))
 
 
-def build_contract_notes(id_df, n_trades):
+def build_contract_notes(id_df, n_trades, n_acct):
     status = F.array(*[F.lit(x) for x in ["Issued", "Issued", "Amended", "Cancelled"]])
     return (id_df
         .withColumn("contract_note_id", F.col("id"))
         .withColumn("trade_id", (F.rand() * n_trades).cast("bigint") + 1)
-        .withColumn("account_id", (F.rand() * int(dbutils.widgets.get("n_accounts"))).cast("bigint") + 1)
+        .withColumn("account_id", (F.rand() * n_acct).cast("bigint") + 1)
         .withColumn("issue_date", F.date_sub(F.current_date(), (F.rand() * 365).cast("int")))
         .withColumn("gross_amount", F.round(F.rand() * 100000 + 100, 2))
         .withColumn("brokerage", F.round(F.col("gross_amount") * 0.001 + 5, 2))
@@ -158,24 +162,13 @@ def build_contract_notes(id_df, n_trades):
                 "brokerage", "gst", "net_amount", "status"))
 
 
-BUILDERS = {
-    "accounts": lambda idf: build_accounts(idf),
-    "securities": lambda idf: build_securities(idf),
-    "trades": lambda idf: build_trades(idf, int(dbutils.widgets.get("n_accounts")), int(dbutils.widgets.get("n_securities"))),
-    "holdings": lambda idf: build_holdings(idf, int(dbutils.widgets.get("n_accounts")), int(dbutils.widgets.get("n_securities"))),
-    "contract_notes": lambda idf: build_contract_notes(idf, int(dbutils.widgets.get("n_trades"))),
-}
-KEY = {
-    "accounts": "account_id", "securities": "security_id", "trades": "trade_id",
-    "holdings": "holding_id", "contract_notes": "contract_note_id",
-}
-COUNT = {
-    "accounts": int(dbutils.widgets.get("n_accounts")),
-    "securities": int(dbutils.widgets.get("n_securities")),
-    "trades": int(dbutils.widgets.get("n_trades")),
-    "holdings": int(dbutils.widgets.get("n_holdings")),
-    "contract_notes": int(dbutils.widgets.get("n_contract_notes")),
-}
+def build(entity, id_df):
+    na, ns, nt = COUNT["accounts"], COUNT["securities"], COUNT["trades"]
+    if entity == "accounts":       return build_accounts(id_df)
+    if entity == "securities":     return build_securities(id_df)
+    if entity == "trades":         return build_trades(id_df, na, ns)
+    if entity == "holdings":       return build_holdings(id_df, na, ns)
+    if entity == "contract_notes": return build_contract_notes(id_df, nt, na)
 
 
 # COMMAND ----------
@@ -183,56 +176,53 @@ COUNT = {
 
 # COMMAND ----------
 
-for entity in ENTITIES:
-    n = COUNT[entity]
-    ids = spark.range(1, n + 1).withColumnRenamed("id", "id")
-    rows = BUILDERS[entity](ids)
-    cv = _next_commit_version(n)
-    w = Window.orderBy(F.col(KEY[entity]))
-    changes = (rows
-        .withColumn("_change_type", F.lit("insert"))
-        .withColumn("_commit_version", F.lit(cv) + F.row_number().over(w) - 1))
-    _write_changes(entity, changes)
-    print(f"[initial] {entity}: {n} inserts (commit_version {cv}..{cv + n - 1})")
+def initial_load():
+    for entity in ENTITIES:
+        n = COUNT[entity]
+        rows = build(entity, spark.range(1, n + 1))
+        cv = _next_commit_version(n)
+        w = Window.orderBy(F.col(KEY[entity]))
+        changes = (rows
+            .withColumn("_change_type", F.lit("insert"))
+            .withColumn("_commit_version", F.lit(cv) + F.row_number().over(w) - 1))
+        _write_changes(entity, changes)
+        print(f"[initial] {entity}: {n} inserts (commit_version {cv}..{cv + n - 1})")
+    print("Initial load complete →", VOL_PATH)
 
-print("Initial load complete →", VOL_PATH)
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## CDC cycle — run repeatedly
-# MAGIC Emits, per entity: ~`update_pct` updates (mutated attributes, new commit_version),
+# MAGIC ## CDC cycle
+# MAGIC Per entity: ~`update_pct` updates (mutated attributes, new commit_version),
 # MAGIC ~`delete_pct` deletes, plus a handful of **duplicate** and **out-of-order** events so you
 # MAGIC can see `APPLY CHANGES … SEQUENCE BY` dedup/order them automatically.
 
 # COMMAND ----------
 
-UPDATE_PCT = float(dbutils.widgets.get("update_pct"))
-DELETE_PCT = float(dbutils.widgets.get("delete_pct"))
+def run_cycle():
+    for entity in ENTITIES:
+        n = COUNT[entity]
+        n_upd = int(n * UPDATE_PCT)
+        n_del = int(n * DELETE_PCT)
+        n_dup = max(1, n_upd // 20)
+        cv = _next_commit_version(n_upd + n_del + n_dup + 10)
 
-for entity in ENTITIES:
-    n = COUNT[entity]
-    key = KEY[entity]
-    n_upd = int(n * UPDATE_PCT)
-    n_del = int(n * DELETE_PCT)
-    total = n_upd + n_del + max(1, n_upd // 20)  # + ~5% duplicates
-    cv = _next_commit_version(total + 10)
+        upd = build(entity, spark.range(1, n + 1).orderBy(F.rand()).limit(n_upd)).withColumn("_change_type", F.lit("update"))
+        del_rows = build(entity, spark.range(1, n + 1).orderBy(F.rand()).limit(n_del)).withColumn("_change_type", F.lit("delete"))
+        dups = upd.limit(n_dup)  # duplicates — APPLY CHANGES should collapse these
 
-    # Updates: sample existing keys, rebuild attributes, mark as update.
-    upd_ids = (spark.range(1, n + 1).orderBy(F.rand()).limit(n_upd).withColumnRenamed("id", "id"))
-    upd = BUILDERS[entity](upd_ids).withColumn("_change_type", F.lit("update"))
+        batch = upd.unionByName(del_rows).unionByName(dups)
+        # Assign commit versions on a shuffled order to simulate out-of-order arrival.
+        w = Window.orderBy(F.rand())
+        batch = batch.withColumn("_commit_version", F.lit(cv) + F.row_number().over(w) - 1)
+        _write_changes(entity, batch)
+        print(f"[cycle] {entity}: {n_upd} upd, {n_del} del, ~{n_dup} dup")
+    print("CDC cycle complete. Re-run the SDP pipeline to process incrementally.")
 
-    # Deletes: sample existing keys (payload columns null except key).
-    del_ids = spark.range(1, n + 1).orderBy(F.rand()).limit(n_del)
-    del_rows = BUILDERS[entity](del_ids).withColumn("_change_type", F.lit("delete"))
 
-    # Duplicates: re-emit a few update rows (APPLY CHANGES should collapse these).
-    dups = upd.limit(max(1, n_upd // 20))
+# COMMAND ----------
 
-    batch = upd.unionByName(del_rows).unionByName(dups)
-    # Assign commit versions, then shuffle to simulate out-of-order arrival within the batch.
-    w = Window.orderBy(F.rand())
-    batch = batch.withColumn("_commit_version", F.lit(cv) + F.row_number().over(w) - 1)
-    _write_changes(entity, batch)
-    print(f"[cycle] {entity}: {n_upd} upd, {n_del} del, ~{max(1, n_upd//20)} dup")
-
-print("CDC cycle complete. Re-run the SDP pipeline to process incrementally.")
+if MODE in ("init", "both"):
+    initial_load()
+if MODE in ("cycle", "both"):
+    run_cycle()
