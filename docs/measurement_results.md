@@ -1,6 +1,6 @@
 # Measured: MV dedup vs APPLY CHANGES
 
-Captured live in the FEVM demo workspace (`finclear-sdp-demo`, us-east-2), light scale:
+Captured live in the FEVM workshop workspace (us-east-2), light scale:
 10k accounts / 1k securities / 50k trades / 20k holdings / 50k contract notes, ~18% churn/cycle.
 Both approaches produce **identical** current-state silver (verified: `silver_accounts` =
 `silver_accounts_mv` = 9,918 rows).

@@ -1,8 +1,8 @@
-# FinClear SDP demo — talk track
+# FinClear SDP workshop — guide
 
-A ~30-min walkthrough that maps the demo to FinClear's stated concerns. Workspace:
+A ~30-min walkthrough that maps the workshop to FinClear's stated concerns. Workspace:
 `https://fevm-finclear-sdp-demo.cloud.databricks.com` (us-east-2). Catalog
-`finclear_sdp_demo_catalog`, schema `sdp_demo`.
+`finclear_sdp_demo_catalog`, schema `sdp_workshop`.
 
 ## 1. Framing (2 min)
 "This is your Summit data shape — accounts, securities, trades, holdings, contract notes — flowing

@@ -1,7 +1,7 @@
 resources:
   pipelines:
     finclear_sdp:
-      name: finclear-sdp-${bundle.target}
+      name: finclear-sdp-workshop-${bundle.target}
       catalog: ${var.catalog}
       schema: ${var.schema}
       serverless: true

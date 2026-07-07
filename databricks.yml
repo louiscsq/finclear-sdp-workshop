@@ -1,5 +1,5 @@
 bundle:
-  name: finclear-sdp-demo
+  name: finclear-sdp-workshop
 
 include:
   - resources/*.yml
@@ -11,7 +11,7 @@ variables:
     default: finclear_demo
   schema:
     description: Target schema for the medallion tables
-    default: sdp_demo
+    default: sdp_workshop
   volume:
     description: Landing volume for the Artie-style CDC change files
     default: artie_cdc
@@ -40,4 +40,4 @@ targets:
       host: https://fevm-finclear-sdp-demo.cloud.databricks.com
     variables:
       catalog: finclear_sdp_demo_catalog
-      schema: sdp_demo_prod
+      schema: sdp_workshop_prod
