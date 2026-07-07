@@ -18,6 +18,9 @@ variables:
   warehouse_id:
     description: SQL warehouse backing the AI/BI dashboard
     default: 757ed630ccf6bac1
+  ingest_mode:
+    description: Bronze ingest — cdf (Artie merge-in-place + CDF, default) or files (append-only feed)
+    default: cdf
 
 targets:
   # Development target — isolated schema, pipeline in dev mode (fast iteration).

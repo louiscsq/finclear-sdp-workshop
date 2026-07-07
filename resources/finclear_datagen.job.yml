@@ -8,8 +8,10 @@ resources:
           notebook_task:
             notebook_path: ../data_gen/finclear_datagen.py
             base_parameters:
+              sink: ${var.ingest_mode}
               catalog: ${var.catalog}
               schema: ${var.schema}
+              src_schema: ${var.schema}
               volume: ${var.volume}
       tags:
         project: finclear-sdp-accelerator

@@ -22,9 +22,11 @@
 # COMMAND ----------
 
 dbutils.widgets.dropdown("mode", "both", ["init", "cycle", "both"], "Run mode")
+dbutils.widgets.dropdown("sink", "cdf", ["cdf", "files"], "Artie sink")
 dbutils.widgets.text("catalog", "finclear_demo", "Target catalog")
 dbutils.widgets.text("schema", "sdp_demo", "Target schema")
-dbutils.widgets.text("volume", "artie_cdc", "Landing volume (change files)")
+dbutils.widgets.text("src_schema", "", "Schema for Artie src tables (cdf mode; blank=schema)")
+dbutils.widgets.text("volume", "artie_cdc", "Landing volume (files mode)")
 # Light defaults — dial up for a bigger cost gap, down for a faster live run.
 dbutils.widgets.text("n_accounts", "10000", "Accounts")
 dbutils.widgets.text("n_securities", "1000", "Securities")
@@ -35,8 +37,10 @@ dbutils.widgets.text("update_pct", "0.18", "Update rate per cycle")
 dbutils.widgets.text("delete_pct", "0.01", "Delete rate per cycle")
 
 MODE = dbutils.widgets.get("mode")
+SINK = dbutils.widgets.get("sink")            # 'cdf' (merge-in-place, default) | 'files'
 CATALOG = dbutils.widgets.get("catalog")
 SCHEMA = dbutils.widgets.get("schema")
+SRC_SCHEMA = dbutils.widgets.get("src_schema") or SCHEMA
 VOLUME = dbutils.widgets.get("volume")
 VOL_PATH = f"/Volumes/{CATALOG}/{SCHEMA}/{VOLUME}"
 UPDATE_PCT = float(dbutils.widgets.get("update_pct"))
@@ -46,6 +50,7 @@ from pyspark.sql import functions as F, Window
 
 # Catalog is assumed to already exist (managed catalogs often can't be created ad hoc).
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA}")
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SRC_SCHEMA}")
 spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG}.{SCHEMA}.{VOLUME}")
 
 # Control table: tracks the global commit-version high-water mark so sequencing is
@@ -69,7 +74,44 @@ def _next_commit_version(n_rows: int) -> int:
 
 
 def _write_changes(entity: str, df):
+    """files sink: append the change batch as Parquet under the entity's Volume folder."""
     df.write.mode("append").parquet(f"{VOL_PATH}/{entity}/")
+
+
+def _apply_cdf(entity: str, changes, is_initial: bool):
+    """cdf sink: MERGE the change batch into the current-state `src_<entity>` Delta table
+    (CDF enabled) — i.e. Artie merging in place. Bronze then reads the Change Data Feed."""
+    key = KEY[entity]
+    tgt = f"{CATALOG}.{SRC_SCHEMA}.src_{entity}"
+    biz_cols = [c for c in changes.columns if c not in ("_change_type", "_commit_version")]
+    if is_initial:
+        biz = changes.select(*biz_cols)
+        # Create empty CDF-enabled table, then append inserts (captured by CDF from v1).
+        (biz.limit(0).write.mode("overwrite")
+            .option("delta.enableChangeDataFeed", "true").saveAsTable(tgt))
+        spark.sql(f"ALTER TABLE {tgt} SET TBLPROPERTIES (delta.enableChangeDataFeed = true)")
+        biz.write.mode("append").saveAsTable(tgt)
+    else:
+        # MERGE requires a deduped source: keep the latest change per key.
+        w = Window.partitionBy(key).orderBy(F.col("_commit_version").desc())
+        staged = changes.withColumn("_rn", F.row_number().over(w)).filter("_rn = 1").drop("_rn")
+        staged.createOrReplaceTempView("_stg")
+        set_clause = ", ".join(f"t.`{c}` = s.`{c}`" for c in biz_cols if c != key)
+        ins_cols = ", ".join(f"`{c}`" for c in biz_cols)
+        ins_vals = ", ".join(f"s.`{c}`" for c in biz_cols)
+        spark.sql(f"""
+            MERGE INTO {tgt} t USING _stg s ON t.`{key}` = s.`{key}`
+            WHEN MATCHED AND s._change_type = 'delete' THEN DELETE
+            WHEN MATCHED THEN UPDATE SET {set_clause}
+            WHEN NOT MATCHED AND s._change_type <> 'delete' THEN INSERT ({ins_cols}) VALUES ({ins_vals})
+        """)
+
+
+def persist(entity: str, changes, is_initial: bool):
+    if SINK == "files":
+        _write_changes(entity, changes)
+    else:
+        _apply_cdf(entity, changes, is_initial)
 
 
 # COMMAND ----------
@@ -185,9 +227,9 @@ def initial_load():
         changes = (rows
             .withColumn("_change_type", F.lit("insert"))
             .withColumn("_commit_version", F.lit(cv) + F.row_number().over(w) - 1))
-        _write_changes(entity, changes)
-        print(f"[initial] {entity}: {n} inserts (commit_version {cv}..{cv + n - 1})")
-    print("Initial load complete →", VOL_PATH)
+        persist(entity, changes, is_initial=True)
+        print(f"[initial] {entity}: {n} inserts (sink={SINK})")
+    print(f"Initial load complete (sink={SINK}).")
 
 
 # COMMAND ----------
@@ -215,8 +257,8 @@ def run_cycle():
         # Assign commit versions on a shuffled order to simulate out-of-order arrival.
         w = Window.orderBy(F.rand())
         batch = batch.withColumn("_commit_version", F.lit(cv) + F.row_number().over(w) - 1)
-        _write_changes(entity, batch)
-        print(f"[cycle] {entity}: {n_upd} upd, {n_del} del, ~{n_dup} dup")
+        persist(entity, batch, is_initial=False)
+        print(f"[cycle] {entity}: {n_upd} upd, {n_del} del, ~{n_dup} dup (sink={SINK})")
     print("CDC cycle complete. Re-run the SDP pipeline to process incrementally.")
 
 

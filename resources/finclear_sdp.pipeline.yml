@@ -11,8 +11,11 @@ resources:
         - glob:
             include: ../pipeline/transformations/**
       configuration:
-        # Referenced in bronze.sql as ${source_volume}
-        source_volume: /Volumes/${var.catalog}/${var.schema}/${var.volume}
+        catalog: ${var.catalog}
+        schema: ${var.schema}
+        src_schema: ${var.schema}          # where Artie's src_<entity> tables live (cdf mode)
+        ingest_mode: ${var.ingest_mode}     # 'cdf' (merge-in-place, default) | 'files'
+        source_volume: /Volumes/${var.catalog}/${var.schema}/${var.volume}  # files mode
       # Cost-attribution tags (surface in the pipeline UI; see docs for serverless
       # budget-policy tagging that flows tags into system.billing.usage).
       tags:
