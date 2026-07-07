@@ -4,35 +4,35 @@
       "name": "ds_portfolio",
       "displayName": "Portfolio valuation",
       "queryLines": [
-        "SELECT * FROM finclear_sdp_demo_catalog.sdp_demo.gold_portfolio_valuation"
+        "SELECT * FROM finclear_sdp_demo_catalog.sdp_workshop.gold_portfolio_valuation"
       ]
     },
     {
       "name": "ds_trades",
       "displayName": "Daily trade activity",
       "queryLines": [
-        "SELECT * FROM finclear_sdp_demo_catalog.sdp_demo.gold_daily_trade_activity"
+        "SELECT * FROM finclear_sdp_demo_catalog.sdp_workshop.gold_daily_trade_activity"
       ]
     },
     {
       "name": "ds_notes",
       "displayName": "Contract notes",
       "queryLines": [
-        "SELECT * FROM finclear_sdp_demo_catalog.sdp_demo.gold_contract_note_summary"
+        "SELECT * FROM finclear_sdp_demo_catalog.sdp_workshop.gold_contract_note_summary"
       ]
     },
     {
       "name": "ds_dq",
       "displayName": "Data quality (expectations)",
       "queryLines": [
-        "SELECT replace(origin.flow_name,'finclear_sdp_demo_catalog.sdp_demo.','') AS table_name, SUM(CAST(details:flow_progress.data_quality.dropped_records AS BIGINT)) AS dropped_records, SUM(CAST(details:flow_progress.data_quality.warned_records AS BIGINT)) AS warned_records FROM event_log('f856c634-7b1e-441a-83a4-828fcc3ab6d4') WHERE event_type='flow_progress' AND details:flow_progress.data_quality IS NOT NULL GROUP BY 1 HAVING table_name <> ''"
+        "SELECT replace(origin.flow_name,'finclear_sdp_demo_catalog.sdp_workshop.','') AS table_name, SUM(CAST(details:flow_progress.data_quality.dropped_records AS BIGINT)) AS dropped_records, SUM(CAST(details:flow_progress.data_quality.warned_records AS BIGINT)) AS warned_records FROM event_log('a7ab19ed-de5d-49a4-a87b-3dbfa3587b12') WHERE event_type='flow_progress' AND details:flow_progress.data_quality IS NOT NULL GROUP BY 1 HAVING table_name <> ''"
       ]
     },
     {
       "name": "ds_cost",
       "displayName": "Serverless usage (this pipeline)",
       "queryLines": [
-        "SELECT usage_date, sku_name, ROUND(SUM(usage_quantity),3) AS dbus FROM system.billing.usage WHERE usage_metadata.dlt_pipeline_id = 'f856c634-7b1e-441a-83a4-828fcc3ab6d4' AND usage_date >= current_date() - 30 GROUP BY 1,2"
+        "SELECT usage_date, sku_name, ROUND(SUM(usage_quantity),3) AS dbus FROM system.billing.usage WHERE usage_metadata.dlt_pipeline_id = 'a7ab19ed-de5d-49a4-a87b-3dbfa3587b12' AND usage_date >= current_date() - 30 GROUP BY 1,2"
       ]
     }
   ],
