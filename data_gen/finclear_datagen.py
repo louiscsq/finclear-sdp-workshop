@@ -40,7 +40,8 @@ VOL_PATH = f"/Volumes/{CATALOG}/{SCHEMA}/{VOLUME}"
 
 from pyspark.sql import functions as F, Window
 
-spark.sql(f"CREATE CATALOG IF NOT EXISTS {CATALOG}")
+# Catalog is assumed to already exist (managed catalogs often can't be created ad hoc).
+# Point the `catalog` param at an existing catalog you can write to.
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA}")
 spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG}.{SCHEMA}.{VOLUME}")
 

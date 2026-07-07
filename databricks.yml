@@ -23,6 +23,9 @@ targets:
     default: true
     workspace:
       host: https://fevm-finclear-sdp-demo.cloud.databricks.com
+    variables:
+      # FEVM-provisioned managed catalog for this demo workspace.
+      catalog: finclear_sdp_demo_catalog
 
   # Production target — separate schema, illustrates dev→prod promotion (Week-4 DevOps story).
   prod:
@@ -30,4 +33,5 @@ targets:
     workspace:
       host: https://fevm-finclear-sdp-demo.cloud.databricks.com
     variables:
+      catalog: finclear_sdp_demo_catalog
       schema: sdp_demo_prod
