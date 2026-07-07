@@ -9,7 +9,7 @@ resources:
       channel: CURRENT
       libraries:
         - glob:
-            include: pipeline/transformations/**
+            include: ../pipeline/transformations/**
       configuration:
         # Referenced in bronze.sql as ${source_volume}
         source_volume: /Volumes/${var.catalog}/${var.schema}/${var.volume}
