@@ -1,0 +1,641 @@
+{
+  "datasets": [
+    {
+      "name": "ds_portfolio",
+      "displayName": "Portfolio valuation",
+      "queryLines": [
+        "SELECT * FROM finclear_sdp_demo_catalog.sdp_demo.gold_portfolio_valuation"
+      ]
+    },
+    {
+      "name": "ds_trades",
+      "displayName": "Daily trade activity",
+      "queryLines": [
+        "SELECT * FROM finclear_sdp_demo_catalog.sdp_demo.gold_daily_trade_activity"
+      ]
+    },
+    {
+      "name": "ds_notes",
+      "displayName": "Contract notes",
+      "queryLines": [
+        "SELECT * FROM finclear_sdp_demo_catalog.sdp_demo.gold_contract_note_summary"
+      ]
+    },
+    {
+      "name": "ds_dq",
+      "displayName": "Data quality (expectations)",
+      "queryLines": [
+        "SELECT replace(origin.flow_name,'finclear_sdp_demo_catalog.sdp_demo.','') AS table_name, SUM(CAST(details:flow_progress.data_quality.dropped_records AS BIGINT)) AS dropped_records, SUM(CAST(details:flow_progress.data_quality.warned_records AS BIGINT)) AS warned_records FROM event_log('f856c634-7b1e-441a-83a4-828fcc3ab6d4') WHERE event_type='flow_progress' AND details:flow_progress.data_quality IS NOT NULL GROUP BY 1 HAVING table_name <> ''"
+      ]
+    },
+    {
+      "name": "ds_cost",
+      "displayName": "Serverless usage (this pipeline)",
+      "queryLines": [
+        "SELECT usage_date, sku_name, ROUND(SUM(usage_quantity),3) AS dbus FROM system.billing.usage WHERE usage_metadata.dlt_pipeline_id = 'f856c634-7b1e-441a-83a4-828fcc3ab6d4' AND usage_date >= current_date() - 30 GROUP BY 1,2"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "overview",
+      "displayName": "Overview",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layout": [
+        {
+          "widget": {
+            "name": "title",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## FinClear \u2014 Summit Medallion (SDP demo)"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "subtitle",
+            "multilineTextboxSpec": {
+              "lines": [
+                "Gold marts served from the Artie CDC \u2192 bronze \u2192 silver \u2192 gold pipeline. Business metrics, data-quality (expectations), and serverless cost."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi-mktval",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_portfolio",
+                  "fields": [
+                    {
+                      "name": "sum(total_market_value)",
+                      "expression": "SUM(`total_market_value`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(total_market_value)",
+                  "displayName": "Total market value (AUD)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Total market value (AUD)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi-pnl",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_portfolio",
+                  "fields": [
+                    {
+                      "name": "sum(total_unrealised_pnl)",
+                      "expression": "SUM(`total_unrealised_pnl`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(total_unrealised_pnl)",
+                  "displayName": "Unrealised P&L (AUD)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Unrealised P&L (AUD)"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi-accts",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_portfolio",
+                  "fields": [
+                    {
+                      "name": "countdistinct(account_id)",
+                      "expression": "COUNT(DISTINCT `account_id`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "countdistinct(account_id)",
+                  "displayName": "Accounts"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Accounts"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "sec-biz",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Business metrics"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "bar-assetclass-mv",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_portfolio",
+                  "fields": [
+                    {
+                      "name": "asset_class",
+                      "expression": "`asset_class`"
+                    },
+                    {
+                      "name": "sum(total_market_value)",
+                      "expression": "SUM(`total_market_value`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "asset_class",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  },
+                  "displayName": "asset_class"
+                },
+                "y": {
+                  "fieldName": "sum(total_market_value)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Market value by asset class"
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Market value by asset class"
+              },
+              "mark": {
+                "colors": [
+                  "#FF3621",
+                  "#00A972",
+                  "#FFAB00",
+                  "#8BCAE7",
+                  "#AB4057"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "bar-assetclass-tr",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_trades",
+                  "fields": [
+                    {
+                      "name": "asset_class",
+                      "expression": "`asset_class`"
+                    },
+                    {
+                      "name": "sum(num_trades)",
+                      "expression": "SUM(`num_trades`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "asset_class",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  },
+                  "displayName": "asset_class"
+                },
+                "y": {
+                  "fieldName": "sum(num_trades)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Trades by asset class"
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Trades by asset class"
+              },
+              "mark": {
+                "colors": [
+                  "#FF3621",
+                  "#00A972",
+                  "#FFAB00",
+                  "#8BCAE7",
+                  "#AB4057"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 6,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "line-daily-gross",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_trades",
+                  "fields": [
+                    {
+                      "name": "daily",
+                      "expression": "DATE_TRUNC(\"DAY\", `trade_date`)"
+                    },
+                    {
+                      "name": "sum(total_gross)",
+                      "expression": "SUM(`total_gross`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "daily",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Date"
+                },
+                "y": {
+                  "fieldName": "sum(total_gross)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Daily trade value (gross)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Daily trade value (gross)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 11,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "sec-dq",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Data quality \u2014 expectations"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 16,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi-warned",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_dq",
+                  "fields": [
+                    {
+                      "name": "sum(warned_records)",
+                      "expression": "SUM(`warned_records`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(warned_records)",
+                  "displayName": "Rows flagged (warn)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Rows flagged (warn)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 17,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi-dropped",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_dq",
+                  "fields": [
+                    {
+                      "name": "sum(dropped_records)",
+                      "expression": "SUM(`dropped_records`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(dropped_records)",
+                  "displayName": "Rows dropped"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Rows dropped"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 17,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "tbl-dq",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_dq",
+                  "fields": [
+                    {
+                      "name": "table_name",
+                      "expression": "`table_name`"
+                    },
+                    {
+                      "name": "dropped_records",
+                      "expression": "`dropped_records`"
+                    },
+                    {
+                      "name": "warned_records",
+                      "expression": "`warned_records`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "table_name",
+                    "displayName": "Table"
+                  },
+                  {
+                    "fieldName": "dropped_records",
+                    "displayName": "Dropped"
+                  },
+                  {
+                    "fieldName": "warned_records",
+                    "displayName": "Warned"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Expectation results by table"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 17,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "sec-cost",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Serverless cost (this pipeline) \u2014 populates as billing lands"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 20,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "tbl-cost",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_cost",
+                  "fields": [
+                    {
+                      "name": "usage_date",
+                      "expression": "`usage_date`"
+                    },
+                    {
+                      "name": "sku_name",
+                      "expression": "`sku_name`"
+                    },
+                    {
+                      "name": "dbus",
+                      "expression": "`dbus`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "usage_date",
+                    "displayName": "Date"
+                  },
+                  {
+                    "fieldName": "sku_name",
+                    "displayName": "SKU"
+                  },
+                  {
+                    "fieldName": "dbus",
+                    "displayName": "DBUs"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Serverless DBUs by SKU"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 21,
+            "width": 6,
+            "height": 4
+          }
+        }
+      ]
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    }
+  }
+}

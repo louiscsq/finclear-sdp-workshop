@@ -15,6 +15,9 @@ variables:
   volume:
     description: Landing volume for the Artie-style CDC change files
     default: artie_cdc
+  warehouse_id:
+    description: SQL warehouse backing the AI/BI dashboard
+    default: 757ed630ccf6bac1
 
 targets:
   # Development target — isolated schema, pipeline in dev mode (fast iteration).

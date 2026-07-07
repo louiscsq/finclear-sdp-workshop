@@ -54,8 +54,11 @@ STORED AS SCD TYPE 1;
 -- ---- Trades (SCD1) -----------------------------------------------------------
 CREATE OR REFRESH STREAMING TABLE silver_trades
 (
-  CONSTRAINT valid_qty EXPECT (quantity > 0),
-  CONSTRAINT valid_amt EXPECT (gross_amount >= 0)
+  -- DROP: hard data-quality guardrails (invalid rows are dropped)
+  CONSTRAINT valid_qty EXPECT (quantity > 0) ON VIOLATION DROP ROW,
+  CONSTRAINT valid_amt EXPECT (gross_amount >= 0) ON VIOLATION DROP ROW,
+  -- WARN: monitoring signal — flag unusually large trades for review (row is kept)
+  CONSTRAINT large_trade_review EXPECT (gross_amount < 500000)
 )
 COMMENT 'Current-state trades — via APPLY CHANGES SCD1';
 

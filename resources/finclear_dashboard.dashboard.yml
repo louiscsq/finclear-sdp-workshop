@@ -1,0 +1,9 @@
+resources:
+  dashboards:
+    finclear_demo:
+      display_name: "FinClear — Summit Medallion (SDP demo)"
+      file_path: ../dashboards/finclear_demo.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      # NOTE: the data-quality and cost datasets inside the .lvdash.json reference the
+      # pipeline id via event_log()/dlt_pipeline_id. When retargeting to another workspace,
+      # update those two dataset queries with the new pipeline id.
