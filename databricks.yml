@@ -1,0 +1,33 @@
+bundle:
+  name: finclear-sdp-demo
+
+include:
+  - resources/*.yml
+
+# Parametrized so FinClear can retarget catalog/schema without touching pipeline SQL.
+variables:
+  catalog:
+    description: Target Unity Catalog
+    default: finclear_demo
+  schema:
+    description: Target schema for the medallion tables
+    default: sdp_demo
+  volume:
+    description: Landing volume for the Artie-style CDC change files
+    default: artie_cdc
+
+targets:
+  # Development target — isolated schema, pipeline in dev mode (fast iteration).
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://fevm-finclear-sdp-demo.cloud.databricks.com
+
+  # Production target — separate schema, illustrates dev→prod promotion (Week-4 DevOps story).
+  prod:
+    mode: production
+    workspace:
+      host: https://fevm-finclear-sdp-demo.cloud.databricks.com
+    variables:
+      schema: sdp_demo_prod

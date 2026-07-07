@@ -1,0 +1,21 @@
+resources:
+  pipelines:
+    finclear_sdp:
+      name: finclear-sdp-${bundle.target}
+      catalog: ${var.catalog}
+      schema: ${var.schema}
+      serverless: true
+      photon: true
+      channel: CURRENT
+      libraries:
+        - glob:
+            include: pipeline/transformations/**
+      configuration:
+        # Referenced in bronze.sql as ${source_volume}
+        source_volume: /Volumes/${var.catalog}/${var.schema}/${var.volume}
+      # Cost-attribution tags (surface in the pipeline UI; see docs for serverless
+      # budget-policy tagging that flows tags into system.billing.usage).
+      tags:
+        project: finclear-sdp-accelerator
+        cost_center: finclear-demo
+        layer: medallion

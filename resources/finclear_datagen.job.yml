@@ -1,0 +1,16 @@
+resources:
+  jobs:
+    finclear_datagen:
+      name: finclear-datagen-${bundle.target}
+      # Runs the "fake Artie" generator. Task has no compute block → serverless.
+      tasks:
+        - task_key: generate
+          notebook_task:
+            notebook_path: ../data_gen/finclear_datagen.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              volume: ${var.volume}
+      tags:
+        project: finclear-sdp-accelerator
+        cost_center: finclear-demo
