@@ -20,5 +20,5 @@ resources:
       # budget-policy tagging that flows tags into system.billing.usage).
       tags:
         project: finclear-sdp-accelerator
-        cost_center: finclear-demo
+        cost_center: finclear-workshop
         layer: medallion

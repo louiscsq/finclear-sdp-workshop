@@ -1,6 +1,6 @@
 resources:
   dashboards:
-    finclear_demo:
+    finclear_workshop:
       display_name: "FinClear — Summit Medallion (SDP workshop)"
       file_path: ../dashboards/finclear_workshop.lvdash.json
       warehouse_id: ${var.warehouse_id}
