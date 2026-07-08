@@ -115,7 +115,8 @@ databricks bundle deploy -p finclear-sdp --var="catalog=my_cat,schema=my_schema,
 - **Gold** — materialized views: portfolio valuation, daily trade activity, contract-note summary.
 
 See `docs/workshop_guide.md` for the guided walkthrough, `docs/measurement_results.md` for the
-measured MV-vs-APPLY CHANGES numbers, and `docs/dab_conversion_walkthrough.md` for the DevOps story.
+measured MV-vs-APPLY CHANGES numbers, `docs/dab_conversion_walkthrough.md` for the DevOps story,
+and `docs/failure_and_recovery.md` for failure isolation, selective refresh, and one-pipeline-vs-many.
 
 ---
 
