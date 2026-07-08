@@ -119,6 +119,21 @@ databricks bundle deploy -p finclear-sdp --var="catalog=my_cat,schema=my_schema,
   purely to measure cost against the APPLY CHANGES arm.
 - **Gold** — materialized views: portfolio valuation, daily trade activity, contract-note summary.
 
+### Why bronze is Python and silver/gold are SQL
+
+Not a style choice — it's capability + fit:
+
+- **Bronze is Python** because the merge-in-place lane opens a **streaming read on a Delta table's
+  Change Data Feed** (`spark.readStream.option("readChangeFeed", …)`). SDP **SQL** streaming tables
+  can stream from files or other pipeline tables, but there's **no SQL syntax to stream a change
+  feed** (`table_changes()` is batch-only). So the CDF read must use the DataFrame API. Bronze also
+  generates its five near-identical tables from a loop — natural in Python. *(If you ran everything
+  on the append-only file lane, bronze could be pure SQL via `FROM STREAM read_files(...)`.)*
+- **Silver & gold are SQL** because everything they need — `APPLY CHANGES`, materialized views,
+  expectations, joins/aggregations — expresses cleanly in SQL, and SQL matches the team's dbt
+  skillset for the handoff. Rule of thumb: **use SQL where it works; drop to Python only where SQL
+  can't** (here, just the CDF read). SDP compiles `.py` + `.sql` files into one graph natively.
+
 See `docs/workshop_guide.md` for the guided walkthrough, `docs/measurement_results.md` for the
 measured MV-vs-APPLY CHANGES numbers, `docs/dab_conversion_walkthrough.md` for the DevOps story,
 and `docs/failure_and_recovery.md` for failure isolation, selective refresh, and one-pipeline-vs-many.
