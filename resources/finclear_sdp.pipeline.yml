@@ -11,8 +11,7 @@ resources:
         - glob:
             include: ../pipeline/transformations/**
       configuration:
-        catalog: ${var.catalog}
-        schema: ${var.schema}
+        catalog: ${var.catalog}            # read by bronze.py to locate external src_<entity> tables
         src_schema: ${var.schema}          # where Artie's src_<entity> tables live (cdf mode)
         ingest_mode: ${var.ingest_mode}     # 'cdf' (merge-in-place, default) | 'files'
         source_volume: /Volumes/${var.catalog}/${var.schema}/${var.volume}  # files mode
