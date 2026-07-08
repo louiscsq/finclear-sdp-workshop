@@ -23,10 +23,26 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("pipeline_id", "", "SDP pipeline ID")
+dbutils.widgets.text("pipeline_id", "", "Pipeline ID — leave BLANK to auto-detect (not the run id)")
+dbutils.widgets.text("pipeline_name_contains", "finclear-sdp-workshop", "Pipeline name to match (auto-detect)")
 dbutils.widgets.text("catalog", "finclear_sdp_demo_catalog", "Catalog")
 dbutils.widgets.text("schema", "sdp_workshop", "Schema")
-PIPELINE_ID = dbutils.widgets.get("pipeline_id")
+
+# Use the pasted id if given, otherwise look the PIPELINE up by name. This avoids the common
+# mistake of pasting the *run* id (Run details → Pipeline run ID) instead of the *pipeline* id
+# (Pipeline details → Pipeline ID) — event_log() needs the pipeline id.
+PIPELINE_ID = dbutils.widgets.get("pipeline_id").strip()
+if not PIPELINE_ID:
+    from databricks.sdk import WorkspaceClient
+    needle = dbutils.widgets.get("pipeline_name_contains")
+    matches = [p for p in WorkspaceClient().pipelines.list_pipelines() if needle in (p.name or "")]
+    if not matches:
+        raise ValueError(f"No pipeline found with name containing '{needle}'. Paste the Pipeline ID manually.")
+    # prefer the dev pipeline if both dev and prod exist
+    matches.sort(key=lambda p: ("-dev" not in (p.name or ""), p.name or ""))
+    PIPELINE_ID = matches[0].pipeline_id
+    print(f"Auto-detected pipeline_id = {PIPELINE_ID}   (name: {matches[0].name})")
+
 C = f"{dbutils.widgets.get('catalog')}.{dbutils.widgets.get('schema')}"
 
 # Every silver_<entity> is built by APPLY CHANGES (including securities, off the file-lane feed).
