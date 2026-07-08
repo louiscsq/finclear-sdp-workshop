@@ -120,6 +120,24 @@ display(spark.sql("SELECT _change_type, COUNT(*) AS events FROM bronze_accounts_
 
 # COMMAND ----------
 # MAGIC %md
+# MAGIC #### "Same shape, two doors in" — how each table arrived
+# MAGIC `_source_file` reveals the lane: the **CDF lane** points at the source Delta table
+# MAGIC (`src_accounts`); the **file lane** points at actual Parquet files in the Volume. Both feed the
+# MAGIC identical bronze shape.
+
+# COMMAND ----------
+
+display(spark.sql("""
+  SELECT 'accounts (CDF lane)'    AS entity, _source_file, COUNT(*) AS rows
+  FROM bronze_accounts_cdc   GROUP BY _source_file
+  UNION ALL
+  SELECT 'securities (file lane)' AS entity, _source_file, COUNT(*) AS rows
+  FROM bronze_securities_cdc GROUP BY _source_file
+  ORDER BY entity, rows DESC
+"""))
+
+# COMMAND ----------
+# MAGIC %md
 # MAGIC ### Silver — current state (SCD1) + history (SCD2)
 # MAGIC `silver_accounts` is the deduplicated current view (deletes applied). `silver_accounts_history`
 # MAGIC keeps every version with `__START_AT` / `__END_AT` — point-in-time audit, the native equivalent
