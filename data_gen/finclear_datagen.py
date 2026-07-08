@@ -2,16 +2,17 @@
 # MAGIC %md
 # MAGIC # FinClear — "Fake Artie" data generator + CDC simulator
 # MAGIC
-# MAGIC Simulates the FinClear **Summit** capital-markets source, the way **Artie** delivers it.
-# MAGIC Two sinks (widget `sink`):
+# MAGIC Simulates the FinClear **Summit** source, the way **Artie** delivers it — with ingestion
+# MAGIC set **per entity** via the `files_entities` widget so both delivery modes run side by side:
 # MAGIC
-# MAGIC - **`cdf`** *(default)* — Artie **merges changes in place** into current-state `src_<entity>`
-# MAGIC   Delta tables with Change Data Feed enabled. Bronze reads their CDF. This matches FinClear's
-# MAGIC   likely Artie setup ("raw source copy, one object per source table" + "CDC merge into Delta").
-# MAGIC - **`files`** *(fallback)* — Artie emits an **append-only change feed** as Parquet files in a
-# MAGIC   Volume; bronze reads them with Auto Loader.
+# MAGIC - **Merge-in-place (CDF)** — for entities NOT in `files_entities`. Artie MERGEs changes in
+# MAGIC   place into current-state `src_<entity>` Delta tables (Change Data Feed on); bronze reads
+# MAGIC   their CDF. Fits the transactional Summit tables (accounts, trades, holdings, contract_notes).
+# MAGIC - **Append-only files** — for entities listed in `files_entities` (default `securities`).
+# MAGIC   Emitted as Parquet change files in a Volume; bronze reads them with Auto Loader. Fits
+# MAGIC   file-delivered / reference sources (e.g. the instrument master) and Artie's history mode.
 # MAGIC
-# MAGIC Both yield the identical `_change_type` / `_commit_version` change stream downstream.
+# MAGIC Both lanes yield the identical `_change_type` / `_commit_version` change stream downstream.
 # MAGIC
 # MAGIC **`mode`**: `init` (initial load only) · `cycle` (one CDC cycle) · `both` (default).
 # MAGIC Run `init` once, then `cycle` repeatedly (re-run the SDP pipeline between cycles to see
@@ -21,7 +22,7 @@
 # COMMAND ----------
 
 dbutils.widgets.dropdown("mode", "both", ["init", "cycle", "both"], "Run mode")
-dbutils.widgets.dropdown("sink", "cdf", ["cdf", "files"], "Artie sink")
+dbutils.widgets.text("files_entities", "securities", "Entities via append-only files (rest = CDF)")
 dbutils.widgets.text("catalog", "finclear_sdp_demo_catalog", "Target catalog")
 dbutils.widgets.text("schema", "sdp_workshop", "Target schema")
 dbutils.widgets.text("src_schema", "", "Schema for Artie src tables (cdf mode; blank=schema)")
@@ -36,7 +37,8 @@ dbutils.widgets.text("update_pct", "0.18", "Update rate per cycle")
 dbutils.widgets.text("delete_pct", "0.01", "Delete rate per cycle")
 
 MODE = dbutils.widgets.get("mode")
-SINK = dbutils.widgets.get("sink")            # 'cdf' (merge-in-place, default) | 'files'
+# Entities delivered as an append-only file feed; everything else = Artie merge-in-place (CDF).
+FILES_ENTITIES = {e.strip() for e in dbutils.widgets.get("files_entities").split(",") if e.strip()}
 CATALOG = dbutils.widgets.get("catalog")
 SCHEMA = dbutils.widgets.get("schema")
 SRC_SCHEMA = dbutils.widgets.get("src_schema") or SCHEMA
@@ -73,12 +75,12 @@ def _next_commit_version(n_rows: int) -> int:
 
 
 def _write_changes(entity: str, df):
-    """files sink: append the change batch as Parquet under the entity's Volume folder."""
+    """file lane: append the change batch as Parquet under the entity's Volume folder."""
     df.write.mode("append").parquet(f"{VOL_PATH}/{entity}/")
 
 
 def _apply_cdf(entity: str, changes, is_initial: bool):
-    """cdf sink: MERGE the change batch into the current-state `src_<entity>` Delta table
+    """CDF lane: MERGE the change batch into the current-state `src_<entity>` Delta table
     (CDF enabled) — i.e. Artie merging in place. Bronze then reads the Change Data Feed."""
     key = KEY[entity]
     tgt = f"{CATALOG}.{SRC_SCHEMA}.src_{entity}"
@@ -107,7 +109,12 @@ def _apply_cdf(entity: str, changes, is_initial: bool):
 
 
 def persist(entity: str, changes, is_initial: bool):
-    if SINK == "files":
+    if entity in FILES_ENTITIES:
+        if is_initial:
+            try:
+                dbutils.fs.rm(f"{VOL_PATH}/{entity}", True)  # idempotent re-init of the file lane
+            except Exception:
+                pass
         _write_changes(entity, changes)
     else:
         _apply_cdf(entity, changes, is_initial)
@@ -227,8 +234,8 @@ def initial_load():
             .withColumn("_change_type", F.lit("insert"))
             .withColumn("_commit_version", F.lit(cv) + F.row_number().over(w) - 1))
         persist(entity, changes, is_initial=True)
-        print(f"[initial] {entity}: {n} inserts (sink={SINK})")
-    print(f"Initial load complete (sink={SINK}).")
+        print(f"[initial] {entity}: {n} inserts ({'files' if entity in FILES_ENTITIES else 'cdf'})")
+    print(f"Initial load complete. Files lane: {sorted(FILES_ENTITIES) or 'none'}; the rest via CDF.")
 
 
 # COMMAND ----------
@@ -260,7 +267,7 @@ def run_cycle():
         w = Window.orderBy(F.rand())
         batch = batch.withColumn("_commit_version", F.lit(cv) + F.row_number().over(w) - 1)
         persist(entity, batch, is_initial=False)
-        print(f"[cycle] {entity}: {n_upd} upd, {n_del} del, ~{n_dup} dup (sink={SINK})")
+        print(f"[cycle] {entity}: {n_upd} upd, {n_del} del, ~{n_dup} dup ({'files' if entity in FILES_ENTITIES else 'cdf'})")
     print("CDC cycle complete. Re-run the SDP pipeline to process incrementally.")
 
 

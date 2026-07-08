@@ -23,23 +23,26 @@ FinClear:
 
 ---
 
-## How the ingest maps to Artie — and how to point it at the real thing
+## How the ingest maps to Artie — both lanes, side by side
 
-Bronze supports two ingest modes (bundle variable `ingest_mode`), both normalized into the same
-`bronze_<entity>_cdc` change stream so everything downstream is identical:
+Ingestion is set **per entity** (bundle variable `files_entities`), so both of Artie's delivery
+patterns run in the **same pipeline** — mirroring FinClear's real two-lane architecture (Summit DB
+via Artie CDC, plus file/API feeds). Both lanes normalize into the same `bronze_<entity>_cdc`
+change stream, so everything downstream is identical:
 
-| `ingest_mode` | Models | Bronze reads | Matches |
+| Lane | Entities (default) | How it arrives | Bronze reads |
 |---|---|---|---|
-| **`cdf`** *(default)* | Artie **merging in place** into current-state Delta tables | **Change Data Feed** (`readChangeFeed`) | FinClear's likely Artie setup |
-| `files` | Artie emitting an **append-only change feed** | Auto Loader over files | Artie change-feed / history mode |
+| **Merge-in-place (CDF)** | accounts, trades, holdings, contract_notes | Artie MERGEs changes into current-state `src_<entity>` Delta tables (CDF on) | **Change Data Feed** (`readChangeFeed`) |
+| **Append-only files** | securities (instrument reference / master) | delivered as Parquet change files in a Volume | **Auto Loader** |
 
-The default is **merge-in-place + CDF** because that's what your architecture docs point to
-(*"raw source copy, one object per source table"* + *"CDC merge operations into the Delta Lake
-layer"*). The "fake Artie" generator MERGEs changes into `src_<entity>` Delta tables with CDF
-enabled, and bronze reads their change feed — exactly the pattern you'd run in production.
+The split is realistic: the transactional Summit tables come via Artie **merge-in-place** (matching
+*"raw source copy, one object per source table"* + *"CDC merge into the Delta Lake layer"*), while
+reference data like **securities** arrives as an append-only file feed. Change the split any time
+with `--var="files_entities=securities,contract_notes"` (or `files_entities=` for all-CDF).
 
-**To point this at real Artie:** enable Change Data Feed on Artie's target Delta tables, set
-`src_schema` to where they live, and keep `ingest_mode=cdf`. Nothing else changes.
+**To point this at real Artie:** for CDF-lane tables, enable Change Data Feed on Artie's target
+Delta tables and set `src_schema`; for file-lane sources, point `source_volume` at the landing
+path. Nothing downstream changes.
 
 ---
 
@@ -63,7 +66,7 @@ finclear-sdp-workshop/
 ├── databricks.yml                     # Asset Bundle: dev/prod targets, variables
 ├── resources/                         # pipeline, generator job, dashboard
 ├── pipeline/transformations/          # the medallion
-│   ├── bronze.py                      # CDF (merge-in-place, default) or files ingest + expectations
+│   ├── bronze.py                      # per-entity ingest: CDF (merge-in-place) or files + expectations
 │   ├── silver_apply_changes.sql       # APPLY CHANGES SCD1 + SCD2  ← recommended arm
 │   ├── silver_materialized_view.sql   # MV ROW_NUMBER dedup        ← comparison arm
 │   └── gold.sql                       # report-ready materialized views
@@ -81,13 +84,14 @@ finclear-sdp-workshop/
 # 0. Authenticate (once)
 databricks auth login --host https://fevm-finclear-sdp-demo.cloud.databricks.com --profile finclear-sdp
 
-# 1. Deploy the bundle (dev target, merge-in-place default)
+# 1. Deploy the bundle (dev target)
 databricks bundle deploy -p finclear-sdp
 
-# 2. Generate initial data — "fake Artie" merges into src_<entity> Delta tables (CDF on)
+# 2. Generate initial data — "fake Artie": CDF-lane tables merge into src_<entity>,
+#    file-lane tables (default: securities) land as Parquet in the Volume
 databricks bundle run finclear_datagen -p finclear-sdp
 
-# 3. Run the pipeline (bronze reads the CDF → silver → gold)
+# 3. Run the pipeline (bronze reads CDF + files → silver → gold)
 databricks bundle run finclear_sdp -p finclear-sdp
 
 # 4. Emit more CDC cycles, then re-run the pipeline to see incremental processing
@@ -96,18 +100,19 @@ databricks bundle run finclear_sdp -p finclear-sdp
 # 5. Measure MV vs APPLY CHANGES  → notebooks/20_measure_mv_vs_apply.py
 ```
 
-Retarget or switch ingest mode without touching SQL:
+Retarget or change which entities use the file lane, without touching SQL:
 
 ```bash
-databricks bundle deploy -p finclear-sdp --var="catalog=my_cat,schema=my_schema,ingest_mode=files"
+databricks bundle deploy -p finclear-sdp --var="catalog=my_cat,schema=my_schema,files_entities=securities,contract_notes"
 ```
 
 ---
 
 ## The medallion
 
-- **Bronze** — one streaming table per Summit entity, reading Artie's CDF (default) or files.
-  Expectations guard change metadata; deletes tolerated.
+- **Bronze** — one streaming table per Summit entity. Per-entity ingest: CDF (merge-in-place lane)
+  or Auto Loader (file lane), normalized to one change-stream shape. Expectations guard change
+  metadata; deletes tolerated.
 - **Silver (recommended)** — `APPLY CHANGES` → current-state dimensions (SCD1) + history (SCD2),
   incrementally, handling dedup / ordering / deletes automatically.
 - **Silver (comparison)** — `silver_*_mv` reproduce the same state via ROW_NUMBER dedup (recompute),

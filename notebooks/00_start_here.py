@@ -59,18 +59,22 @@ print("Using", C)
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## 3. Generate test data  ("fake Artie")
+# MAGIC ## 3. Generate test data  ("fake Artie") — two lanes at once
 # MAGIC
-# MAGIC The generator plays the role of Artie: it **merges CDC changes in place** into current-state
-# MAGIC `src_<entity>` Delta tables (Change Data Feed enabled) — exactly what Artie does in production.
+# MAGIC The generator plays Artie, with ingestion set **per entity** so both delivery patterns run
+# MAGIC side by side (this mirrors your real two-lane architecture):
+# MAGIC - **Merge-in-place (CDF)** — accounts, trades, holdings, contract_notes: MERGEd into
+# MAGIC   current-state `src_<entity>` Delta tables (Change Data Feed on); bronze reads their CDF.
+# MAGIC - **Append-only files** — `securities` (instrument reference): landed as Parquet in a Volume;
+# MAGIC   bronze reads it with Auto Loader.
 # MAGIC
-# MAGIC **Option A — one click here** (runs the generator with defaults: initial load + one CDC cycle):
+# MAGIC **Option A — one click here** (initial load + one CDC cycle, `securities` on the file lane):
 
 # COMMAND ----------
 
 # Uncomment to (re)generate data from this notebook:
 # dbutils.notebook.run("../data_gen/finclear_datagen", 600,
-#     {"mode": "both", "sink": "cdf", "catalog": CATALOG, "schema": SCHEMA, "src_schema": SCHEMA})
+#     {"mode": "both", "files_entities": "securities", "catalog": CATALOG, "schema": SCHEMA, "src_schema": SCHEMA})
 
 # COMMAND ----------
 # MAGIC %md
@@ -161,7 +165,7 @@ display(spark.sql("""
 # MAGIC Emit another batch of changes (updates/deletes), then re-run the pipeline:
 # MAGIC ```bash
 # MAGIC # cycle-only (no re-initialise):
-# MAGIC databricks jobs run-now --json '{"job_id": <DATAGEN_JOB_ID>, "notebook_params": {"mode":"cycle","sink":"cdf","catalog":"finclear_sdp_demo_catalog","schema":"sdp_workshop","src_schema":"sdp_workshop"}}' -p finclear-sdp
+# MAGIC databricks jobs run-now --json '{"job_id": <DATAGEN_JOB_ID>, "notebook_params": {"mode":"cycle","files_entities":"securities","catalog":"finclear_sdp_demo_catalog","schema":"sdp_workshop","src_schema":"sdp_workshop"}}' -p finclear-sdp
 # MAGIC databricks bundle run finclear_sdp -p finclear-sdp
 # MAGIC ```
 # MAGIC Then open `notebooks/20_measure_mv_vs_apply.py` to see the punchline: **`APPLY CHANGES` writes
@@ -189,7 +193,7 @@ display(spark.sql("""
 # MAGIC %md
 # MAGIC ## 8. Make it yours
 # MAGIC
-# MAGIC - **Point at real Artie** — enable Change Data Feed on Artie's Delta tables, set `src_schema`, keep `ingest_mode=cdf`. Retire the generator.
+# MAGIC - **Point at real Artie** — for CDF-lane tables enable Change Data Feed and set `src_schema`; for file-lane sources set `files_entities` + `source_volume`. Retire the generator.
 # MAGIC - **Add entities / gold marts** — extend `data_gen/`, `pipeline/transformations/silver_apply_changes.sql`, and `gold.sql`.
 # MAGIC - **Govern** — add UC row filters / column masks / ABAC on silver (e.g. mask `accounts.email`); add Delta Sharing with `CURRENT_RECIPIENT()` for per-client access.
 # MAGIC - **Promote** — `databricks bundle deploy --target prod`; wire it into a PR pipeline (`docs/dab_conversion_walkthrough.md`).

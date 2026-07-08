@@ -12,9 +12,9 @@ resources:
             include: ../pipeline/transformations/**
       configuration:
         catalog: ${var.catalog}            # read by bronze.py to locate external src_<entity> tables
-        src_schema: ${var.schema}          # where Artie's src_<entity> tables live (cdf mode)
-        ingest_mode: ${var.ingest_mode}     # 'cdf' (merge-in-place, default) | 'files'
-        source_volume: /Volumes/${var.catalog}/${var.schema}/${var.volume}  # files mode
+        src_schema: ${var.schema}          # where Artie's src_<entity> tables live (cdf lane)
+        files_entities: ${var.files_entities}   # entities via append-only files; the rest via CDF
+        source_volume: /Volumes/${var.catalog}/${var.schema}/${var.volume}  # files lane
       # Cost-attribution tags (surface in the pipeline UI; see docs for serverless
       # budget-policy tagging that flows tags into system.billing.usage).
       tags:

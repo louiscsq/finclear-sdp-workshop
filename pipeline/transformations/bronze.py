@@ -1,24 +1,27 @@
 # ============================================================================
 # BRONZE — raw Artie CDC change feed, one streaming table per Summit entity.
 #
-# Two ingest modes (pipeline config `ingest_mode`), both normalized into the
-# SAME `bronze_<entity>_cdc` change stream so silver/gold are identical:
+# Ingestion is PER-ENTITY (config `files_entities`, a comma-separated list). Both
+# lanes normalize into the SAME `bronze_<entity>_cdc` change stream, so silver/gold
+# are identical regardless of how a table arrived:
 #
-#   cdf   (DEFAULT) — Artie MERGES changes in place into current-state Delta
-#                     tables (`src_<entity>`); we read their Change Data Feed.
-#                     This matches FinClear's likely Artie setup.
-#   files (fallback)— Artie emits an append-only change feed as files; we read
-#                     it with Auto Loader.
+#   cdf   (default)  — Artie MERGES changes in place into current-state Delta tables
+#                      (`src_<entity>`); we read their Change Data Feed. Fits the
+#                      transactional Summit tables (accounts, trades, holdings, …).
+#   files            — an append-only change feed as Parquet files in a Volume, read
+#                      with Auto Loader. Fits file-delivered / reference sources
+#                      (e.g. the instrument master) and Artie's history mode.
 #
 # The CDF read must be Python (SQL streaming can't read a change feed).
 # ============================================================================
 from pyspark import pipelines as dp
 from pyspark.sql import functions as F
 
-MODE       = spark.conf.get("ingest_mode", "cdf")   # 'cdf' | 'files'
 CATALOG    = spark.conf.get("catalog")
 SRC_SCHEMA = spark.conf.get("src_schema")
-SRC_VOLUME = spark.conf.get("source_volume")        # files mode only
+SRC_VOLUME = spark.conf.get("source_volume")
+# Entities that arrive as an append-only file feed; everything else uses CDF.
+FILES_ENTITIES = {e.strip() for e in spark.conf.get("files_entities", "").split(",") if e.strip()}
 
 ENTITIES = {
     "accounts": "account_id", "securities": "security_id", "trades": "trade_id",
@@ -27,16 +30,18 @@ ENTITIES = {
 
 
 def _make_bronze(entity: str, key: str):
+    mode = "files" if entity in FILES_ENTITIES else "cdf"
+
     @dp.table(
         name=f"bronze_{entity}_cdc",
         cluster_by=[key],
-        comment=f"Raw Artie CDC change feed for Summit {entity} (ingest_mode={MODE})",
+        comment=f"Raw Artie CDC change feed for Summit {entity} (ingest={mode})",
     )
     @dp.expect_or_drop("valid_key", f"{key} IS NOT NULL")
     @dp.expect_or_drop("valid_op", "_change_type IN ('insert','update','delete')")
     @dp.expect_or_drop("valid_seq", "_commit_version IS NOT NULL")
     def _bronze():
-        if MODE == "cdf":
+        if mode == "cdf":
             # Merge-in-place: stream the Change Data Feed of Artie's current-state table.
             # startingVersion=0 so the first pipeline run captures the initial snapshot too.
             df = (
@@ -45,7 +50,6 @@ def _make_bronze(entity: str, key: str):
                 .option("startingVersion", "0")
                 .table(f"{CATALOG}.{SRC_SCHEMA}.src_{entity}")
                 .filter(F.col("_change_type") != "update_preimage")
-                # normalize CDF op names → insert / update / delete
                 .withColumn(
                     "_change_type",
                     F.when(F.col("_change_type") == "update_postimage", F.lit("update"))
@@ -55,7 +59,7 @@ def _make_bronze(entity: str, key: str):
                 .withColumn("_source_file", F.lit(f"src_{entity}"))
             )
         else:
-            # Append-only change feed (fallback): Auto Loader over Parquet change files.
+            # Append-only file feed: Auto Loader over Parquet change files.
             df = (
                 spark.readStream.format("cloudFiles")
                 .option("cloudFiles.format", "parquet")

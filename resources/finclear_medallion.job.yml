@@ -15,11 +15,13 @@ resources:
       # DAB's per-target presets. By leaving it out:
       #   - dev target (`mode: development`) auto-pauses the trigger → stays PAUSED
       #   - prod target defaults to UNPAUSED → goes LIVE
+      # Watches the CDC lane (src_<entity> Delta tables). File-lane sources (e.g. securities)
+      # are picked up on the next triggered run; add a separate file_arrival job if they need
+      # to trigger independently.
       trigger:
         table_update:
           table_names:
             - ${var.catalog}.${var.schema}.src_accounts
-            - ${var.catalog}.${var.schema}.src_securities
             - ${var.catalog}.${var.schema}.src_trades
             - ${var.catalog}.${var.schema}.src_holdings
             - ${var.catalog}.${var.schema}.src_contract_notes
