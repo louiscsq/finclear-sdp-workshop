@@ -1,0 +1,32 @@
+resources:
+  jobs:
+    finclear_medallion:
+      name: finclear-medallion-${bundle.target}
+      # Orchestrates the medallion as one task. SDP itself sequences bronze→silver→gold;
+      # this job is the "around the pipeline" wrapper (schedule/trigger + a place to chain
+      # upstream ingest and downstream serving tasks later).
+      tasks:
+        - task_key: run_medallion
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.finclear_sdp.id}
+
+      # Event-driven: fire when Artie commits to ANY source (src_<entity>) table.
+      # NOTE: pause_status is intentionally omitted. Setting it explicitly overrides
+      # DAB's per-target presets. By leaving it out:
+      #   - dev target (`mode: development`) auto-pauses the trigger → stays PAUSED
+      #   - prod target defaults to UNPAUSED → goes LIVE
+      trigger:
+        table_update:
+          table_names:
+            - ${var.catalog}.${var.schema}.src_accounts
+            - ${var.catalog}.${var.schema}.src_securities
+            - ${var.catalog}.${var.schema}.src_trades
+            - ${var.catalog}.${var.schema}.src_holdings
+            - ${var.catalog}.${var.schema}.src_contract_notes
+          condition: ANY_UPDATED                    # any one source updating triggers a run
+          wait_after_last_change_seconds: 120       # batch a burst of Artie commits (min 60)
+          min_time_between_triggers_seconds: 1800   # cap to ~30-min cadence (min 60)
+
+      tags:
+        project: finclear-sdp-accelerator
+        cost_center: finclear-workshop
