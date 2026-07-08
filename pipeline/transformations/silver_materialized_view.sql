@@ -17,7 +17,7 @@ COMMENT 'Current-state accounts via MV dedup (recompute) — comparison vs silve
 AS
 WITH ranked AS (
   SELECT *, ROW_NUMBER() OVER (PARTITION BY account_id ORDER BY _commit_version DESC) AS _rn
-  FROM bronze_accounts_cdc
+  FROM bronze_accounts_changes
 )
 SELECT * EXCEPT (_change_type, _commit_version, _ingested_at, _source_file, _rn)
 FROM ranked
@@ -26,7 +26,7 @@ WHERE _rn = 1 AND _change_type <> 'delete';
 CREATE OR REFRESH MATERIALIZED VIEW silver_securities_mv AS
 WITH ranked AS (
   SELECT *, ROW_NUMBER() OVER (PARTITION BY security_id ORDER BY _commit_version DESC) AS _rn
-  FROM bronze_securities_cdc
+  FROM bronze_securities_changes
 )
 SELECT * EXCEPT (_change_type, _commit_version, _ingested_at, _source_file, _rn)
 FROM ranked
@@ -35,7 +35,7 @@ WHERE _rn = 1 AND _change_type <> 'delete';
 CREATE OR REFRESH MATERIALIZED VIEW silver_trades_mv AS
 WITH ranked AS (
   SELECT *, ROW_NUMBER() OVER (PARTITION BY trade_id ORDER BY _commit_version DESC) AS _rn
-  FROM bronze_trades_cdc
+  FROM bronze_trades_changes
 )
 SELECT * EXCEPT (_change_type, _commit_version, _ingested_at, _source_file, _rn)
 FROM ranked
@@ -44,7 +44,7 @@ WHERE _rn = 1 AND _change_type <> 'delete';
 CREATE OR REFRESH MATERIALIZED VIEW silver_holdings_mv AS
 WITH ranked AS (
   SELECT *, ROW_NUMBER() OVER (PARTITION BY holding_id ORDER BY _commit_version DESC) AS _rn
-  FROM bronze_holdings_cdc
+  FROM bronze_holdings_changes
 )
 SELECT * EXCEPT (_change_type, _commit_version, _ingested_at, _source_file, _rn)
 FROM ranked
@@ -53,7 +53,7 @@ WHERE _rn = 1 AND _change_type <> 'delete';
 CREATE OR REFRESH MATERIALIZED VIEW silver_contract_notes_mv AS
 WITH ranked AS (
   SELECT *, ROW_NUMBER() OVER (PARTITION BY contract_note_id ORDER BY _commit_version DESC) AS _rn
-  FROM bronze_contract_notes_cdc
+  FROM bronze_contract_notes_changes
 )
 SELECT * EXCEPT (_change_type, _commit_version, _ingested_at, _source_file, _rn)
 FROM ranked

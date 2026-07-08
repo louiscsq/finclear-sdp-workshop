@@ -21,7 +21,7 @@ CREATE OR REFRESH STREAMING TABLE silver_accounts
 COMMENT 'Current-state accounts (deduped, deletes applied) — via APPLY CHANGES SCD1';
 
 APPLY CHANGES INTO silver_accounts
-FROM STREAM(bronze_accounts_cdc)
+FROM STREAM(bronze_accounts_changes)
 KEYS (account_id)
 APPLY AS DELETE WHEN _change_type = 'delete'
 SEQUENCE BY _commit_version
@@ -32,7 +32,7 @@ CREATE OR REFRESH STREAMING TABLE silver_accounts_history
 COMMENT 'Full change history of accounts (SCD Type 2) — Artie history-mode equivalent';
 
 APPLY CHANGES INTO silver_accounts_history
-FROM STREAM(bronze_accounts_cdc)
+FROM STREAM(bronze_accounts_changes)
 KEYS (account_id)
 APPLY AS DELETE WHEN _change_type = 'delete'
 SEQUENCE BY _commit_version
@@ -44,7 +44,7 @@ CREATE OR REFRESH STREAMING TABLE silver_securities
 COMMENT 'Current-state instrument reference — via APPLY CHANGES SCD1';
 
 APPLY CHANGES INTO silver_securities
-FROM STREAM(bronze_securities_cdc)
+FROM STREAM(bronze_securities_changes)
 KEYS (security_id)
 APPLY AS DELETE WHEN _change_type = 'delete'
 SEQUENCE BY _commit_version
@@ -63,7 +63,7 @@ CREATE OR REFRESH STREAMING TABLE silver_trades
 COMMENT 'Current-state trades — via APPLY CHANGES SCD1';
 
 APPLY CHANGES INTO silver_trades
-FROM STREAM(bronze_trades_cdc)
+FROM STREAM(bronze_trades_changes)
 KEYS (trade_id)
 APPLY AS DELETE WHEN _change_type = 'delete'
 SEQUENCE BY _commit_version
@@ -75,7 +75,7 @@ CREATE OR REFRESH STREAMING TABLE silver_holdings
 COMMENT 'Current-state holdings (positions) — via APPLY CHANGES SCD1';
 
 APPLY CHANGES INTO silver_holdings
-FROM STREAM(bronze_holdings_cdc)
+FROM STREAM(bronze_holdings_changes)
 KEYS (holding_id)
 APPLY AS DELETE WHEN _change_type = 'delete'
 SEQUENCE BY _commit_version
@@ -87,7 +87,7 @@ CREATE OR REFRESH STREAMING TABLE silver_contract_notes
 COMMENT 'Current-state contract notes — via APPLY CHANGES SCD1';
 
 APPLY CHANGES INTO silver_contract_notes
-FROM STREAM(bronze_contract_notes_cdc)
+FROM STREAM(bronze_contract_notes_changes)
 KEYS (contract_note_id)
 APPLY AS DELETE WHEN _change_type = 'delete'
 SEQUENCE BY _commit_version

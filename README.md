@@ -27,7 +27,7 @@ FinClear:
 
 Ingestion is set **per entity** (bundle variable `files_entities`), so both of Artie's delivery
 patterns run in the **same pipeline** — mirroring FinClear's real two-lane architecture (Summit DB
-via Artie CDC, plus file/API feeds). Both lanes normalize into the same `bronze_<entity>_cdc`
+via Artie CDC, plus file/API feeds). Both lanes normalize into the same `bronze_<entity>_changes`
 change stream, so everything downstream is identical:
 
 | Lane | Entities (default) | How it arrives | Bronze reads |

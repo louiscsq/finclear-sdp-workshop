@@ -16,10 +16,10 @@ pipeline** rather than one pipeline per source table.
 ## What happens when one table fails (inside one pipeline)
 
 SDP compiles every transformation into one dependency graph and runs the independent flows in
-parallel. If, say, `bronze_trades_cdc` fails:
+parallel. If, say, `bronze_trades_changes` fails:
 
-1. **Independent flows that already succeeded commit and are kept.** `bronze_accounts_cdc`,
-   `bronze_securities_cdc`, etc. are **not** rolled back.
+1. **Independent flows that already succeeded commit and are kept.** `bronze_accounts_changes`,
+   `bronze_securities_changes`, etc. are **not** rolled back.
 2. **Only the failed table's downstream is skipped** — here `silver_trades` and any gold that
    joins trades. Accounts/securities/holdings silver and their gold still complete.
 3. **SDP retries the failing flow** several times within the update before marking it failed.
@@ -37,11 +37,11 @@ You do **not** need to rerun the whole pipeline. Refresh only the affected table
 ```bash
 # Refresh only trades bronze + silver (leaves the rest untouched)
 databricks pipelines start-update <PIPELINE_ID> \
-  --json '{"refresh_selection":["bronze_trades_cdc","silver_trades"]}'
+  --json '{"refresh_selection":["bronze_trades_changes","silver_trades"]}'
 
 # Force a full rebuild of specific tables (e.g. after a schema fix)
 databricks pipelines start-update <PIPELINE_ID> \
-  --json '{"full_refresh_selection":["bronze_trades_cdc"]}'
+  --json '{"full_refresh_selection":["bronze_trades_changes"]}'
 ```
 
 Or in the UI: **Pipeline → Refresh selection**. This gives per-table targeted retry within a

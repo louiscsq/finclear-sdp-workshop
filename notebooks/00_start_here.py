@@ -43,7 +43,7 @@
 # MAGIC ### Medallion layers (in business terms)
 # MAGIC | Layer | What it is | Business value |
 # MAGIC |---|---|---|
-# MAGIC | **Bronze** (`bronze_*_cdc`) | Every change to the source, as it happened (Artie's CDC feed) | Audit-grade capture, no loss of granularity |
+# MAGIC | **Bronze** (`bronze_*_changes`) | Every change to the source, as it happened (Artie's change feed — CDF or files) | Audit-grade capture, no loss of granularity |
 # MAGIC | **Silver** (`silver_*`) | Clean, deduplicated **current state** of each entity (SCD1) + full **history** (SCD2) | "What is true now" for reporting + point-in-time history for audit |
 # MAGIC | **Gold** (`gold_*`) | Report-ready aggregates answering business questions | Directly feeds client statements, ops dashboards, compliance |
 
@@ -104,19 +104,20 @@ display(spark.sql(f"""
 # MAGIC ```bash
 # MAGIC databricks bundle run finclear_sdp -p finclear-sdp
 # MAGIC ```
-# MAGIC Bronze reads Artie's **Change Data Feed**, then `APPLY CHANGES` builds current-state silver and
-# MAGIC materialized views build gold. Watch it in the Pipelines UI (bronze → silver → gold graph).
+# MAGIC Bronze reads each source's change feed (**CDF** for the merge-in-place lane, **Auto Loader**
+# MAGIC for the file lane), then `APPLY CHANGES` builds current-state silver and materialized views
+# MAGIC build gold. Watch it in the Pipelines UI (bronze → silver → gold graph).
 
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## 5. Explore each layer
 # MAGIC
-# MAGIC ### Bronze — the raw CDC change feed (audit-grade)
+# MAGIC ### Bronze — the raw change feed (audit-grade)
 # MAGIC Every insert / update / delete Artie captured. Note the change types:
 
 # COMMAND ----------
 
-display(spark.sql("SELECT _change_type, COUNT(*) AS events FROM bronze_accounts_cdc GROUP BY 1 ORDER BY 1"))
+display(spark.sql("SELECT _change_type, COUNT(*) AS events FROM bronze_accounts_changes GROUP BY 1 ORDER BY 1"))
 
 # COMMAND ----------
 # MAGIC %md
@@ -129,10 +130,10 @@ display(spark.sql("SELECT _change_type, COUNT(*) AS events FROM bronze_accounts_
 
 display(spark.sql("""
   SELECT 'accounts (CDF lane)'    AS entity, _source_file, COUNT(*) AS rows
-  FROM bronze_accounts_cdc   GROUP BY _source_file
+  FROM bronze_accounts_changes   GROUP BY _source_file
   UNION ALL
   SELECT 'securities (file lane)' AS entity, _source_file, COUNT(*) AS rows
-  FROM bronze_securities_cdc GROUP BY _source_file
+  FROM bronze_securities_changes GROUP BY _source_file
   ORDER BY entity, rows DESC
 """))
 

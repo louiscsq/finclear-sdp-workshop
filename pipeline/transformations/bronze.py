@@ -2,7 +2,7 @@
 # BRONZE — raw Artie CDC change feed, one streaming table per Summit entity.
 #
 # Ingestion is PER-ENTITY (config `files_entities`, a comma-separated list). Both
-# lanes normalize into the SAME `bronze_<entity>_cdc` change stream, so silver/gold
+# lanes normalize into the SAME `bronze_<entity>_changes` change stream, so silver/gold
 # are identical regardless of how a table arrived:
 #
 #   cdf   (default)  — Artie MERGES changes in place into current-state Delta tables
@@ -33,9 +33,9 @@ def _make_bronze(entity: str, key: str):
     mode = "files" if entity in FILES_ENTITIES else "cdf"
 
     @dp.table(
-        name=f"bronze_{entity}_cdc",
+        name=f"bronze_{entity}_changes",
         cluster_by=[key],
-        comment=f"Raw Artie CDC change feed for Summit {entity} (ingest={mode})",
+        comment=f"Raw Artie change feed for Summit {entity} (ingest lane = {mode})",
     )
     @dp.expect_or_drop("valid_key", f"{key} IS NOT NULL")
     @dp.expect_or_drop("valid_op", "_change_type IN ('insert','update','delete')")
