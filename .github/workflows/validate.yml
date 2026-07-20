@@ -1,0 +1,78 @@
+# Validate the Databricks Asset Bundle on every pull request.
+# This is the "CI" half — it never deploys, it only proves the bundle is
+# well-formed and resolves against the dev target before anyone merges.
+name: Validate DAB
+
+on:
+  pull_request:
+    branches: [main]
+
+# Serialize per-branch so two pushes to the same PR don't validate concurrently.
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write   # needed to post the summary comment back onto the PR
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      # OAuth service-principal (M2M) auth — set these as repo/environment secrets.
+      # DATABRICKS_HOST comes from the target's workspace.host in databricks.yml,
+      # but the CLI also honors this env var explicitly.
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Validate bundle (dev target)
+        run: databricks bundle validate --target dev
+
+      # Capture what the dev target resolves to so reviewers can see the plan
+      # (resources, catalog/schema, workspace paths) without leaving the PR.
+      - name: Bundle summary
+        id: summary
+        run: |
+          {
+            echo 'text<<EOF'
+            databricks bundle summary --target dev
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Comment summary on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = [
+              '### 📦 DAB validate — `dev` target',
+              '`databricks bundle validate` passed. Resolved summary:',
+              '```',
+              `${{ steps.summary.outputs.text }}`,
+              '```',
+            ].join('\n');
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const marker = '### 📦 DAB validate';
+            const existing = comments.find(c => c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: context.issue.number, body,
+              });
+            }

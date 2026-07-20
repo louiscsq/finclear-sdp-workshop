@@ -1,0 +1,45 @@
+# Tear down a deployed Databricks Asset Bundle target.
+#
+# Manual-only and typed-confirmation gated — `bundle destroy` deletes the jobs,
+# pipelines, and dashboards this bundle deployed, so it never runs automatically.
+name: Destroy DAB
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Bundle target to destroy
+        type: choice
+        options: [dev, prod]
+        default: dev
+      confirm:
+        description: Type the target name again to confirm (e.g. "dev")
+        required: true
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.target }}
+    concurrency:
+      group: deploy-${{ github.event.inputs.target }}   # shares the deploy lock — no destroy mid-deploy
+      cancel-in-progress: false
+    env:
+      TARGET: ${{ github.event.inputs.target }}
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+    steps:
+      - name: Guard — confirmation must match target
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "$TARGET" ]; then
+            echo "::error::Confirmation '${{ github.event.inputs.confirm }}' does not match target '$TARGET'. Aborting."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Destroy bundle
+        run: databricks bundle destroy --target "$TARGET" --auto-approve
