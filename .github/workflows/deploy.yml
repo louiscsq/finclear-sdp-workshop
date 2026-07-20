@@ -1,0 +1,53 @@
+# Deploy the Databricks Asset Bundle — the "CD" half.
+#
+#   push to main            -> deploy the dev target   (auto)
+#   git tag  v* (or manual) -> deploy the prod target  (gated by the `prod` environment)
+#
+# Both targets point at the same workspace in databricks.yml but land in
+# separate schemas (sdp_workshop vs sdp_workshop_prod), so this shows the
+# dev -> prod promotion story without needing a second workspace.
+name: Deploy DAB
+
+on:
+  push:
+    branches: [main]     # -> dev
+    tags: ['v*']         # -> prod
+  workflow_dispatch:      # manual "Run workflow" button
+    inputs:
+      target:
+        description: Bundle target to deploy
+        type: choice
+        options: [dev, prod]
+        default: dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Pick the target: manual input wins, tags go to prod, everything else is dev.
+    # `environment` maps to GitHub Environments so prod can require a reviewer.
+    environment: ${{ (github.event.inputs.target || (startsWith(github.ref, 'refs/tags/v') && 'prod' || 'dev')) }}
+    concurrency:
+      group: deploy-${{ github.event.inputs.target || (startsWith(github.ref, 'refs/tags/v') && 'prod' || 'dev') }}
+      cancel-in-progress: false   # never interrupt an in-flight deploy
+    env:
+      TARGET: ${{ github.event.inputs.target || (startsWith(github.ref, 'refs/tags/v') && 'prod' || 'dev') }}
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Validate bundle
+        run: databricks bundle validate --target "$TARGET"
+
+      - name: Deploy bundle
+        run: databricks bundle deploy --target "$TARGET"
+
+      # Optional: kick the medallion job once after a prod deploy to prove it runs.
+      # Drop this step (or change the job key) if you'd rather deploy-only.
+      - name: Smoke-run the medallion job (prod only)
+        if: env.TARGET == 'prod'
+        run: databricks bundle run finclear_medallion --target prod
